@@ -18,12 +18,18 @@ and subscales, pick a grouping variable, and plot — nothing leaves the browser
   symmetric axis, per-bar `n`, `%` labels, a color legend, and a cursor-tracking
   tooltip. Long labels wrap; the chart is width-responsive.
 - **Partial correlation network**: nodes are items, edges are partial
-  correlations (each pair controlling for all other items). Uses pairwise
-  Pearson correlations with linear shrinkage toward the identity for a stable,
-  positive-definite estimate (a pragmatic stand-in for EBICglasso), a
-  force-directed layout, edges colored by sign and weighted by |partial r|,
-  nodes colored by subscale, and adjustable edge-threshold and regularization
-  sliders.
+  correlations (each pair controlling for all other items).
+  - **Correlations**: Pearson, or **polychoric** (two-step ML, treats items as
+    coarsened latent normals — the standard for ordinal Likert data).
+  - **Estimator**: **EBICglasso** (graphical lasso with EBIC model selection —
+    the standard psychometric-network estimator) or linear shrinkage toward the
+    identity.
+  - **Per-group comparison**: split by any categorical column to draw one
+    network per group as small multiples with a **shared node layout** for
+    direct comparison.
+  - Deterministic force-directed layout, edges colored by sign and weighted by
+    |partial r|, nodes colored by subscale, hover tooltips, PNG/SVG export, and
+    sliders for the edge threshold and EBIC γ / shrinkage.
 - **Data-quality warnings**: on upload, missing (blank) cells, invalid /
   out-of-range values, and malformed CSV rows are detected and summarized. These
   cells are excluded from the charts (each bar's `n` counts only valid

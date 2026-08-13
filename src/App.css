@@ -771,6 +771,26 @@
   color: #b7791f;
   font-weight: 500;
 }
+.panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  fill: #26292f;
+}
+.panel-frame {
+  fill: #fcfcfd;
+  stroke: #e6e9ee;
+  stroke-width: 1;
+  rx: 8;
+}
+.method-tag {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-weight: 500;
+}
 
 /* Slider fields */
 .field.slider {

@@ -2,20 +2,24 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { buildNetwork, forceLayout } from '../lib/network';
 import { downloadPNG, downloadSVG } from '../lib/exportImage';
 
-// Categorical palette for subscales.
 const CAT = [
   '#4e79a7', '#f28e2b', '#59a14f', '#e15759', '#b07aa1',
   '#76b7b2', '#edc948', '#ff9da7', '#9c755f', '#bab0ac',
 ];
-
-const POS = '#2c7bb6'; // positive partial correlation
-const NEG = '#d7191c'; // negative partial correlation
+const POS = '#2c7bb6';
+const NEG = '#d7191c';
 const NODE_R = 11;
+const PANEL_GAP = 18;
+const TITLE_H = 22;
 
-// Short node label: keep compact codes as-is, abbreviate long names to V1, V2…
 function shortLabel(name, idx) {
   const s = String(name);
   return s.length <= 10 ? s : `V${idx + 1}`;
+}
+
+// Group value key (matches buildPlotData's handling).
+function groupKey(v) {
+  return v === null || v === undefined || v === '' ? '(missing)' : String(v);
 }
 
 export default function NetworkChart({
@@ -23,8 +27,12 @@ export default function NetworkChart({
   columns,
   valueMap,
   subscales,
+  corr,
+  estimator,
   alpha,
   threshold,
+  ebicGamma,
+  splitBy,
   filename = 'partial-correlation-network',
 }) {
   const wrapRef = useRef(null);
@@ -44,46 +52,180 @@ export default function NetworkChart({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  const relPos = (e) => {
+    const r = wrapRef.current?.getBoundingClientRect();
+    return r ? { x: e.clientX - r.left, y: e.clientY - r.top } : { x: 0, y: 0 };
+  };
 
   const width = Math.max(320, availW);
-  const height = Math.round(Math.min(680, Math.max(380, width * 0.66)));
 
-  const net = useMemo(
-    () => buildNetwork(rows, columns, { valueMap, alpha, threshold }),
-    [rows, columns, valueMap, alpha, threshold]
+  // Panel groups.
+  const groups = useMemo(() => {
+    if (!splitBy) return [{ label: null, rows }];
+    const order = [];
+    const seen = new Set();
+    for (const row of rows) {
+      const key = groupKey(row[splitBy]);
+      if (!seen.has(key)) {
+        seen.add(key);
+        order.push(key);
+      }
+    }
+    order.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    return order.map((key) => ({
+      label: key,
+      rows: rows.filter((r) => groupKey(r[splitBy]) === key),
+    }));
+  }, [rows, splitBy]);
+
+  const cols = splitBy && groups.length > 1 && width >= 680 ? 2 : 1;
+  const panelW = Math.floor((width - PANEL_GAP * (cols - 1)) / cols);
+  const panelH = Math.round(
+    splitBy ? Math.min(520, Math.max(300, panelW * 0.82)) : Math.min(680, Math.max(380, panelW * 0.66))
   );
 
-  const positions = useMemo(
-    () => forceLayout(net.nodes.length, net.edges, { width, height }),
-    [net, width, height]
+  const opts = { valueMap, corr, estimator, alpha, threshold, ebicGamma };
+
+  // Networks per panel.
+  const nets = useMemo(
+    () => groups.map((g) => ({ label: g.label, net: buildNetwork(g.rows, columns, opts) })),
+    [groups, columns, valueMap, corr, estimator, alpha, threshold, ebicGamma]
   );
 
-  // Map each node to its subscale color.
+  // Reference network + layout (shared across panels for comparability).
+  const layoutRefNet = useMemo(() => {
+    if (!splitBy) return nets[0]?.net;
+    return buildNetwork(rows, columns, {
+      valueMap,
+      corr: 'pearson',
+      estimator: 'shrinkage',
+      alpha: 0.15,
+      threshold: 0,
+    });
+  }, [splitBy, nets, rows, columns, valueMap]);
+
+  const refNodes = layoutRefNet ? layoutRefNet.nodes : [];
+  const positionsByName = useMemo(() => {
+    if (!layoutRefNet) return {};
+    const pos = forceLayout(refNodes.length, layoutRefNet.edges, { width: panelW, height: panelH });
+    const map = {};
+    refNodes.forEach((name, i) => (map[name] = pos[i]));
+    return map;
+  }, [layoutRefNet, panelW, panelH]);
+
+  // Global label / color maps keyed by node name (consistent across panels).
+  const labelByName = useMemo(() => {
+    const m = {};
+    refNodes.forEach((name, i) => (m[name] = shortLabel(name, i)));
+    return m;
+  }, [refNodes]);
   const colToSub = useMemo(() => {
     const m = {};
     (subscales || []).forEach((s) => s.columns.forEach((c) => (m[c] = s.name)));
     return m;
   }, [subscales]);
-  const subNames = useMemo(() => {
-    const present = new Set(net.nodes.map((c) => colToSub[c]).filter(Boolean));
-    return [...present];
-  }, [net.nodes, colToSub]);
+  const subNames = useMemo(() => [...new Set(refNodes.map((c) => colToSub[c]).filter(Boolean))], [refNodes, colToSub]);
   const subColor = (name) => {
     const i = subNames.indexOf(name);
     return i >= 0 ? CAT[i % CAT.length] : '#9aa3ad';
   };
 
+  // Global max |weight| across panels so edge widths are comparable.
   const maxAbs = useMemo(
-    () => net.edges.reduce((m, e) => Math.max(m, Math.abs(e.weight)), 0) || 1,
-    [net.edges]
+    () => Math.max(1e-6, ...nets.flatMap((p) => p.net.edges.map((e) => Math.abs(e.weight)))) || 1,
+    [nets]
   );
   const edgeWidth = (w) => 1 + (Math.abs(w) / maxAbs) * 8;
 
-  const labelFor = (name, i) => shortLabel(name, i);
+  const abbreviated = refNodes.some((n) => labelByName[n] !== n);
+  const nRows = Math.ceil(nets.length / cols);
+  const titled = !!splitBy;
+  const rowH = panelH + (titled ? TITLE_H : 0);
+  const svgW = cols * panelW + (cols - 1) * PANEL_GAP;
+  const svgH = nRows * rowH + (nRows - 1) * PANEL_GAP;
+
+  function renderPanel(panel, gi) {
+    const { net } = panel;
+    const c = gi % cols;
+    const r = Math.floor(gi / cols);
+    const ox = c * (panelW + PANEL_GAP);
+    const oy = r * (rowH + PANEL_GAP) + (titled ? TITLE_H : 0);
+
+    return (
+      <g key={gi} transform={`translate(${ox},${oy})`}>
+        {titled && (
+          <text x={panelW / 2} y={-8} textAnchor="middle" className="panel-title">
+            {panel.label} (n={net.completeN})
+          </text>
+        )}
+        {splitBy && <rect x={0} y={0} width={panelW} height={panelH} className="panel-frame" />}
+
+        {net.edges.map((e, idx) => {
+          const a = positionsByName[net.nodes[e.i]];
+          const b = positionsByName[net.nodes[e.j]];
+          if (!a || !b) return null;
+          const isHover = hover?.type === 'edge' && hover.gi === gi && hover.idx === idx;
+          return (
+            <line
+              key={idx}
+              x1={a.x}
+              y1={a.y}
+              x2={b.x}
+              y2={b.y}
+              stroke={e.weight >= 0 ? POS : NEG}
+              strokeWidth={edgeWidth(e.weight)}
+              strokeOpacity={hover && !isHover ? 0.22 : Math.min(0.9, 0.32 + (Math.abs(e.weight) / maxAbs) * 0.6)}
+              strokeLinecap="round"
+              onMouseMove={(ev) =>
+                setHover({
+                  type: 'edge',
+                  gi,
+                  idx,
+                  text: `${labelByName[net.nodes[e.i]]} — ${labelByName[net.nodes[e.j]]}`,
+                  sub: `partial r = ${e.weight.toFixed(3)}`,
+                  ...relPos(ev),
+                })
+              }
+              onMouseLeave={() => setHover(null)}
+            />
+          );
+        })}
+
+        {net.nodes.map((name) => {
+          const p = positionsByName[name];
+          if (!p) return null;
+          const isHover = hover?.type === 'node' && hover.gi === gi && hover.name === name;
+          return (
+            <g key={name} transform={`translate(${p.x},${p.y})`}>
+              <circle
+                r={NODE_R}
+                fill={subColor(colToSub[name])}
+                stroke={isHover ? '#111' : '#fff'}
+                strokeWidth={isHover ? 2.5 : 1.5}
+                onMouseMove={(ev) =>
+                  setHover({ type: 'node', gi, name, text: name, sub: colToSub[name] || 'unassigned', ...relPos(ev) })
+                }
+                onMouseLeave={() => setHover(null)}
+              />
+              <text y={NODE_R + 10} textAnchor="middle" dominantBaseline="middle" className="node-label">
+                {labelByName[name]}
+              </text>
+              <title>{name}</title>
+            </g>
+          );
+        })}
+      </g>
+    );
+  }
+
+  const methodLabel =
+    `${corr === 'polychoric' ? 'Polychoric' : 'Pearson'} correlations · ` +
+    (estimator === 'glasso' ? 'EBICglasso' : 'shrinkage');
 
   return (
     <div className="chart-wrap" ref={wrapRef}>
       <div className="chart-toolbar">
+        <span className="method-tag">{methodLabel}</span>
         <button className="dl-btn" onClick={() => svgRef.current && downloadPNG(svgRef.current, `${filename}.png`)}>
           ⬇ PNG
         </button>
@@ -92,93 +234,18 @@ export default function NetworkChart({
         </button>
       </div>
 
-      {net.nodes.length < 2 ? (
+      {refNodes.length < 2 ? (
         <div className="placeholder">Select at least two Likert items to build a network.</div>
       ) : (
         <>
-          <svg ref={svgRef} width={width} height={height} className="likert-svg network-svg" role="img">
-            {/* Edges */}
-            {net.edges.map((e, idx) => {
-              const a = positions[e.i];
-              const b = positions[e.j];
-              if (!a || !b) return null;
-              const isHover = hover?.type === 'edge' && hover.idx === idx;
-              return (
-                <line
-                  key={idx}
-                  x1={a.x}
-                  y1={a.y}
-                  x2={b.x}
-                  y2={b.y}
-                  stroke={e.weight >= 0 ? POS : NEG}
-                  strokeWidth={edgeWidth(e.weight)}
-                  strokeOpacity={hover && !isHover ? 0.25 : Math.min(0.9, 0.35 + Math.abs(e.weight) / maxAbs * 0.6)}
-                  strokeLinecap="round"
-                  onMouseMove={(ev) =>
-                    setHover({
-                      type: 'edge',
-                      idx,
-                      text: `${labelFor(net.nodes[e.i], e.i)} — ${labelFor(net.nodes[e.j], e.j)}`,
-                      sub: `partial r = ${e.weight.toFixed(3)}`,
-                      x: ev.nativeEvent.offsetX,
-                      y: ev.nativeEvent.offsetY,
-                    })
-                  }
-                  onMouseLeave={() => setHover(null)}
-                />
-              );
-            })}
-
-            {/* Nodes */}
-            {net.nodes.map((name, i) => {
-              const p = positions[i];
-              if (!p) return null;
-              const isHover = hover?.type === 'node' && hover.idx === i;
-              return (
-                <g
-                  key={name}
-                  transform={`translate(${p.x},${p.y})`}
-                  onMouseMove={(ev) =>
-                    setHover({
-                      type: 'node',
-                      idx: i,
-                      text: name,
-                      sub: colToSub[name] || 'unassigned',
-                      x: p.x,
-                      y: p.y - NODE_R,
-                      _raw: ev,
-                    })
-                  }
-                  onMouseLeave={() => setHover(null)}
-                  style={{ cursor: 'default' }}
-                >
-                  <circle
-                    r={NODE_R}
-                    fill={subColor(colToSub[name])}
-                    stroke={isHover ? '#111' : '#fff'}
-                    strokeWidth={isHover ? 2.5 : 1.5}
-                  />
-                  <text
-                    y={NODE_R + 10}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    className="node-label"
-                  >
-                    {labelFor(name, i)}
-                  </text>
-                  <title>{name}</title>
-                </g>
-              );
-            })}
+          <svg ref={svgRef} width={svgW} height={svgH} className="likert-svg network-svg" role="img">
+            {nets.map(renderPanel)}
           </svg>
 
           {hover && (
             <div
               className="tooltip-floating"
-              style={{
-                left: Math.min(hover.x + 14, width - 190),
-                top: Math.max(hover.y - 6, 4),
-              }}
+              style={{ left: Math.min(hover.x + 14, width - 190), top: Math.max(hover.y - 6, 4) }}
             >
               <strong>{hover.text}</strong>
               <br />
@@ -188,7 +255,6 @@ export default function NetworkChart({
         </>
       )}
 
-      {/* Legends + diagnostics */}
       <div className="net-footer">
         <div className="net-legend">
           <span className="net-legend-title">Edges</span>
@@ -212,13 +278,13 @@ export default function NetworkChart({
           </div>
         )}
 
-        {net.nodes.some((n, i) => labelFor(n, i) !== n) && (
+        {abbreviated && (
           <details className="net-nodemap">
-            <summary>Node labels ({net.nodes.length})</summary>
+            <summary>Node labels ({refNodes.length})</summary>
             <div className="net-nodemap-grid">
-              {net.nodes.map((n, i) => (
+              {refNodes.map((n) => (
                 <div key={n}>
-                  <code>{labelFor(n, i)}</code> {n}
+                  <code>{labelByName[n]}</code> {n}
                 </div>
               ))}
             </div>
@@ -226,10 +292,14 @@ export default function NetworkChart({
         )}
 
         <div className="net-diag muted small">
-          {net.nodes.length} nodes · {net.edges.length} edges · n={net.completeN} complete cases
-          {net.effectiveAlpha != null && ` · shrinkage λ=${net.effectiveAlpha.toFixed(2)}`}
-          {net.dropped.length > 0 && ` · dropped ${net.dropped.length} constant item(s)`}
-          {net.completeN < net.nodes.length && (
+          {methodLabel} ·{' '}
+          {splitBy
+            ? `${nets.length} groups by ${splitBy}`
+            : `${nets[0]?.net.edges.length ?? 0} edges · n=${nets[0]?.net.completeN ?? 0}`}
+          {!splitBy && estimator === 'glasso' && nets[0]?.net.lambda != null && ` · λ=${nets[0].net.lambda.toFixed(3)}`}
+          {!splitBy && nets[0]?.net.estimator === 'shrinkage' && estimator === 'glasso' && ' · glasso failed, used shrinkage'}
+          {refNodes.length > 0 && layoutRefNet?.dropped?.length > 0 && ` · dropped ${layoutRefNet.dropped.length} constant item(s)`}
+          {!splitBy && nets[0]?.net.completeN < refNodes.length && (
             <span className="net-warn"> · few cases relative to items — interpret with caution</span>
           )}
         </div>

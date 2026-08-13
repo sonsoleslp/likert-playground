@@ -140,6 +140,71 @@ export default function ConfigPanel({ config, setConfig, view, setView }) {
           </>
         ) : (
           <>
+            <label className="field">
+              <span>Correlations</span>
+              <select
+                value={view.netCorr}
+                onChange={(e) => setView({ ...view, netCorr: e.target.value })}
+              >
+                <option value="pearson">Pearson (fast)</option>
+                <option value="polychoric">Polychoric (ordinal)</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Estimator</span>
+              <select
+                value={view.netEstimator}
+                onChange={(e) => setView({ ...view, netEstimator: e.target.value })}
+              >
+                <option value="glasso">EBICglasso</option>
+                <option value="shrinkage">Shrinkage</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Split by</span>
+              <select
+                value={view.netSplitBy || ''}
+                onChange={(e) => setView({ ...view, netSplitBy: e.target.value || null })}
+              >
+                <option value="">— whole sample —</option>
+                {config.columns
+                  .filter((c) => !config.likertColumns.includes(c))
+                  .map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+              </select>
+            </label>
+
+            {view.netEstimator === 'glasso' ? (
+              <label className="field slider">
+                <span>EBIC γ</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={view.netGamma}
+                  onChange={(e) => setView({ ...view, netGamma: Number(e.target.value) })}
+                />
+                <span className="slider-val">{view.netGamma.toFixed(2)}</span>
+              </label>
+            ) : (
+              <label className="field slider">
+                <span>Regularization</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={0.6}
+                  step={0.01}
+                  value={view.netAlpha}
+                  onChange={(e) => setView({ ...view, netAlpha: Number(e.target.value) })}
+                />
+                <span className="slider-val">{view.netAlpha.toFixed(2)}</span>
+              </label>
+            )}
+
             <label className="field slider">
               <span>Edge threshold</span>
               <input
@@ -152,21 +217,12 @@ export default function ConfigPanel({ config, setConfig, view, setView }) {
               />
               <span className="slider-val">{view.netThreshold.toFixed(2)}</span>
             </label>
-            <label className="field slider">
-              <span>Regularization</span>
-              <input
-                type="range"
-                min={0}
-                max={0.6}
-                step={0.01}
-                value={view.netAlpha}
-                onChange={(e) => setView({ ...view, netAlpha: Number(e.target.value) })}
-              />
-              <span className="slider-val">{view.netAlpha.toFixed(2)}</span>
-            </label>
+
             <div className="muted small">
-              Hide edges below the threshold; regularization shrinks the correlation matrix toward
-              the identity (higher = sparser, more stable for small samples).
+              {view.netEstimator === 'glasso'
+                ? 'EBICglasso selects a sparse network by EBIC (higher γ = sparser). '
+                : 'Shrinkage pulls the correlation matrix toward the identity (higher = sparser). '}
+              Polychoric correlations suit ordinal Likert items but are slower.
             </div>
           </>
         )}

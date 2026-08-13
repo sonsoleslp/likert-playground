@@ -14,8 +14,12 @@ export default function App() {
     mode: 'bars',
     unit: 'items',
     showPercentLabels: true,
-    netThreshold: 0.05,
+    netCorr: 'pearson',
+    netEstimator: 'glasso',
+    netThreshold: 0,
     netAlpha: 0.15,
+    netGamma: 0.5,
+    netSplitBy: null,
   });
 
   const plotData = useMemo(() => {
@@ -85,7 +89,10 @@ export default function App() {
                   <h2>Partial correlation network</h2>
                   <p className="plot-sub muted small">
                     Nodes are items; edges are partial correlations (each pair controlling for all
-                    other items). Computed over the whole sample.
+                    other items).
+                    {view.netSplitBy
+                      ? ` One network per level of ${view.netSplitBy} (shared layout).`
+                      : ' Computed over the whole sample.'}
                   </p>
                 </div>
                 <NetworkChart
@@ -93,8 +100,12 @@ export default function App() {
                   columns={config.likertColumns}
                   valueMap={config.valueMap}
                   subscales={config.subscales}
+                  corr={view.netCorr}
+                  estimator={view.netEstimator}
                   alpha={view.netAlpha}
                   threshold={view.netThreshold}
+                  ebicGamma={view.netGamma}
+                  splitBy={view.netSplitBy}
                   filename={`${config.name} - network`
                     .replace(/[^a-z0-9]+/gi, '_')
                     .toLowerCase()}
