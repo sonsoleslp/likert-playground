@@ -608,8 +608,7 @@
 
 /* ---------- SVG chart ---------- */
 .likert-svg {
-  max-width: 100%;
-  height: auto;
+  display: block;
 }
 .tick-label {
   font-size: 10px;

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { divergingColors, textOn } from '../lib/colors';
 import { downloadPNG, downloadSVG } from '../lib/exportImage';
 
@@ -8,7 +8,7 @@ const ROW_GAP = 6; // gap between bars within a unit
 const UNIT_GAP = 18; // gap between units
 const HEADER_H = 22; // subscale/unit header height when grouped
 const BASE = { top: 10, right: 62, bottom: 44 }; // left is computed from labels
-const INNER_W = 460; // width of the bar-plotting area
+const MIN_INNER = 260; // minimum bar-area width (below this the chart scrolls)
 const MIN_LEFT = 90;
 const MAX_LEFT = 320; // beyond this the label column wraps instead of widening
 const CHAR_W = 0.62; // rough px-per-char factor at a given font size
@@ -71,6 +71,23 @@ export default function LikertChart({
   const [hover, setHover] = useState(null);
   const wrapRef = useRef(null);
   const svgRef = useRef(null);
+
+  // Track the available width so the bar area fills the container instead of the
+  // whole SVG being scaled down (which would shrink the height and the text).
+  const [availW, setAvailW] = useState(760);
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (el) setAvailW(Math.floor(el.clientWidth));
+  }, []);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) setAvailW(Math.floor(e.contentRect.width));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Mouse position relative to the chart wrapper, for the floating tooltip.
   function relPos(e) {
@@ -143,7 +160,9 @@ export default function LikertChart({
     return { rows, headers, height: y - UNIT_GAP + BASE.bottom };
   }, [plotData, grouped, marginLeft]);
 
-  const innerW = INNER_W;
+  // Bar area fills the available width; floors at MIN_INNER (then the container
+  // scrolls horizontally). svgW == availW when it fits, so no CSS downscaling.
+  const innerW = Math.max(MIN_INNER, availW - margin.left - margin.right);
   const svgW = margin.left + innerW + margin.right;
   const svgH = layout.height;
 
