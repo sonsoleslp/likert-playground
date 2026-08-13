@@ -7,7 +7,11 @@ const ROW_H = 26; // bar height
 const ROW_GAP = 6; // gap between bars within a unit
 const UNIT_GAP = 18; // gap between units
 const HEADER_H = 22; // subscale/unit header height when grouped
-const MARGIN = { top: 10, right: 62, bottom: 44, left: 200 };
+const BASE = { top: 10, right: 62, bottom: 44 }; // left is computed from labels
+const INNER_W = 460; // width of the bar-plotting area
+const MIN_LEFT = 90;
+const MAX_LEFT = 420;
+const CHAR_W = 0.62; // rough px-per-char factor at a given font size
 
 function fmtPct(x) {
   return x >= 0.5 || x === 0 ? `${Math.round(x)}%` : `${x.toFixed(1)}%`;
@@ -33,6 +37,24 @@ export default function LikertChart({
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   }
 
+  // Size the left margin to the widest y-axis label so nothing gets clipped.
+  // In grouped mode both the per-bar group labels and the subscale/unit
+  // headers live in the left gutter, so account for both.
+  const marginLeft = useMemo(() => {
+    const strings = plotData.map((u) => String(u.label));
+    if (grouped) {
+      for (const u of plotData) {
+        for (const b of u.bars) {
+          if (b.groupLabel != null) strings.push(String(b.groupLabel));
+        }
+      }
+    }
+    const maxChars = strings.reduce((m, s) => Math.max(m, s.length), 0);
+    const est = Math.round(maxChars * 12 * CHAR_W) + 24;
+    return Math.max(MIN_LEFT, Math.min(MAX_LEFT, est));
+  }, [plotData, grouped]);
+  const margin = { ...BASE, left: marginLeft };
+
   // Overall horizontal domain: symmetric around 0.
   const maxExtent = useMemo(() => {
     let m = 0;
@@ -46,7 +68,7 @@ export default function LikertChart({
 
   // Compute vertical positions.
   const layout = useMemo(() => {
-    let y = MARGIN.top;
+    let y = BASE.top;
     const rows = [];
     for (const unit of plotData) {
       const unitTop = y;
@@ -61,17 +83,16 @@ export default function LikertChart({
       unit._bottom = unitBottom;
       y += UNIT_GAP;
     }
-    return { rows, height: y - UNIT_GAP + MARGIN.bottom };
+    return { rows, height: y - UNIT_GAP + BASE.bottom };
   }, [plotData, grouped]);
 
-  const plotW = 720;
-  const innerW = plotW - MARGIN.left - MARGIN.right;
-  const svgW = plotW;
+  const innerW = INNER_W;
+  const svgW = margin.left + innerW + margin.right;
   const svgH = layout.height;
 
   // x scale: value in [-maxExtent, maxExtent] -> pixels in [0, innerW].
   const xScale = (v) => ((v + maxExtent) / (2 * maxExtent)) * innerW;
-  const centerX = MARGIN.left + xScale(0);
+  const centerX = margin.left + xScale(0);
 
   // Axis ticks every 20%.
   const ticks = [];
@@ -98,26 +119,26 @@ export default function LikertChart({
       <svg ref={svgRef} width={svgW} height={svgH} className="likert-svg" role="img">
         {/* Grid + axis */}
         {ticks.map((t) => {
-          const x = MARGIN.left + xScale(t);
+          const x = margin.left + xScale(t);
           return (
             <g key={t}>
               <line
                 x1={x}
                 x2={x}
-                y1={MARGIN.top}
-                y2={svgH - MARGIN.bottom}
+                y1={margin.top}
+                y2={svgH - margin.bottom}
                 stroke={t === 0 ? '#888' : '#e6e6e6'}
                 strokeWidth={t === 0 ? 1.5 : 1}
               />
-              <text x={x} y={svgH - MARGIN.bottom + 16} textAnchor="middle" className="tick-label">
+              <text x={x} y={svgH - margin.bottom + 16} textAnchor="middle" className="tick-label">
                 {Math.abs(t)}%
               </text>
             </g>
           );
         })}
         <text
-          x={MARGIN.left + innerW / 2}
-          y={svgH - MARGIN.bottom + 34}
+          x={margin.left + innerW / 2}
+          y={svgH - margin.bottom + 34}
           textAnchor="middle"
           className="axis-title"
         >
@@ -139,7 +160,7 @@ export default function LikertChart({
           return (
             <g key={`${unit.key}-${bar.groupLabel ?? 'all'}`}>
               <text
-                x={MARGIN.left - 10}
+                x={margin.left - 10}
                 y={y + ROW_H / 2}
                 textAnchor="end"
                 dominantBaseline="middle"
@@ -160,8 +181,8 @@ export default function LikertChart({
               ) : (
                 bar.segments.map((seg) => {
                   if (seg.pct <= 0) return null;
-                  const x1 = MARGIN.left + xScale(seg.start);
-                  const x2 = MARGIN.left + xScale(seg.end);
+                  const x1 = margin.left + xScale(seg.start);
+                  const x2 = margin.left + xScale(seg.end);
                   const w = Math.max(0, x2 - x1);
                   const fill = colors[seg.index];
                   const isHover =
@@ -214,7 +235,7 @@ export default function LikertChart({
               {/* n label at far right */}
               {bar.n > 0 && (
                 <text
-                  x={MARGIN.left + innerW + 6}
+                  x={margin.left + innerW + 6}
                   y={y + ROW_H / 2}
                   dominantBaseline="middle"
                   className="n-label"
