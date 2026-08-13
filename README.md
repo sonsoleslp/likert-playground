@@ -17,8 +17,9 @@ and subscales, pick a grouping variable, and plot — nothing leaves the browser
 - **Diverging stacked bars** centered on the neutral category, with a shared
   symmetric axis, per-bar `n`, `%` labels, a color legend, and a cursor-tracking
   tooltip. Long labels wrap; the chart is width-responsive.
-- **Partial correlation network**: nodes are items, edges are partial
-  correlations (each pair controlling for all other items).
+- **Correlation networks**: nodes are items, edges are associations between them.
+  - **Edge type**: **partial correlations** (each pair controlling for all other
+    items) or **zero-order correlations** (the usual pairwise correlations).
   - **Correlations**: Pearson, or **polychoric** (two-step ML, treats items as
     coarsened latent normals — the standard for ordinal Likert data).
   - **Estimator**: **EBICglasso** (graphical lasso with EBIC model selection —

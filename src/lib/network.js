@@ -355,11 +355,12 @@ function ebicGlasso(S, n, { gamma = 0.5, nLambda = 60, ratio = 0.01 } = {}) {
 
 /* ------------------------------- public API ------------------------------ */
 
-// opts: { valueMap, corr: 'pearson'|'polychoric', estimator: 'shrinkage'|'glasso',
-//         alpha (shrinkage), threshold, ebicGamma }
+// opts: { valueMap, type: 'partial'|'correlation', corr: 'pearson'|'polychoric',
+//         estimator: 'shrinkage'|'glasso', alpha (shrinkage), threshold, ebicGamma }
 export function buildNetwork(rows, columns, opts = {}) {
   const {
     valueMap = null,
+    type = 'partial',
     corr = 'pearson',
     estimator = 'shrinkage',
     alpha = 0.15,
@@ -381,10 +382,11 @@ export function buildNetwork(rows, columns, opts = {}) {
   const empty = {
     nodes,
     edges: [],
-    pcor: [],
+    assoc: [],
     dropped,
     completeN: 0,
     sampleN: rows.length,
+    type,
     corr,
     estimator,
     effectiveAlpha: alpha,
@@ -402,41 +404,51 @@ export function buildNetwork(rows, columns, opts = {}) {
     if (ok) completeN++;
   }
 
-  let precision = null;
+  // `assoc` holds the edge weights: zero-order correlations, or partials.
+  let assoc;
   let effectiveAlpha = alpha;
   let lambda = null;
+  let usedEstimator = 'correlation';
+  let singular = false;
 
-  if (estimator === 'glasso') {
-    const nEff = Math.max(completeN, 2);
-    const res = ebicGlasso(R, nEff, { gamma: ebicGamma });
-    if (res) {
-      precision = res.precision;
-      lambda = res.lambda;
-    }
-  }
-  if (!precision) {
-    // Shrinkage fallback (also the 'shrinkage' path). Auto-increase if singular.
-    let a = estimator === 'glasso' ? 0.1 : alpha;
-    let tries = 0;
-    while (!precision && tries < 8) {
-      const Rs = R.map((row, i) => row.map((v, j) => (i === j ? 1 : (1 - a) * v)));
-      precision = invert(Rs);
-      if (!precision) {
-        a = a < 0.02 ? 0.05 : Math.min(0.95, a * 1.7);
-        tries++;
+  if (type === 'correlation') {
+    assoc = R;
+  } else {
+    let precision = null;
+    if (estimator === 'glasso') {
+      const res = ebicGlasso(R, Math.max(completeN, 2), { gamma: ebicGamma });
+      if (res) {
+        precision = res.precision;
+        lambda = res.lambda;
+        usedEstimator = 'glasso';
       }
     }
-    effectiveAlpha = a;
-    if (estimator !== 'glasso') lambda = null;
-  }
+    if (!precision) {
+      // Shrinkage path (or glasso fallback). Auto-increase if singular.
+      let a = estimator === 'glasso' ? 0.1 : alpha;
+      let tries = 0;
+      while (!precision && tries < 8) {
+        const Rs = R.map((row, i) => row.map((v, j) => (i === j ? 1 : (1 - a) * v)));
+        precision = invert(Rs);
+        if (!precision) {
+          a = a < 0.02 ? 0.05 : Math.min(0.95, a * 1.7);
+          tries++;
+        }
+      }
+      effectiveAlpha = a;
+      lambda = null;
+      usedEstimator = 'shrinkage';
+    }
 
-  const pcor = Array.from({ length: n }, () => new Array(n).fill(0));
-  if (precision) {
-    for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        const denom = Math.sqrt(precision[i][i] * precision[j][j]);
-        const p = denom > 0 ? -precision[i][j] / denom : 0;
-        pcor[i][j] = pcor[j][i] = Number.isFinite(p) ? p : 0;
+    assoc = Array.from({ length: n }, () => new Array(n).fill(0));
+    singular = !precision;
+    if (precision) {
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const denom = Math.sqrt(precision[i][i] * precision[j][j]);
+          const p = denom > 0 ? -precision[i][j] / denom : 0;
+          assoc[i][j] = assoc[j][i] = Number.isFinite(p) ? p : 0;
+        }
       }
     }
   }
@@ -444,7 +456,7 @@ export function buildNetwork(rows, columns, opts = {}) {
   const edges = [];
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
-      const w = pcor[i][j];
+      const w = assoc[i][j];
       if (Number.isFinite(w) && Math.abs(w) >= threshold && Math.abs(w) > 1e-6) edges.push({ i, j, weight: w });
     }
   }
@@ -452,15 +464,16 @@ export function buildNetwork(rows, columns, opts = {}) {
   return {
     nodes,
     edges,
-    pcor,
+    assoc,
     dropped,
     completeN,
     sampleN: rows.length,
+    type,
     corr,
-    estimator: precision && estimator === 'glasso' && lambda != null ? 'glasso' : 'shrinkage',
+    estimator: usedEstimator,
     effectiveAlpha,
     lambda,
-    singular: !precision,
+    singular,
   };
 }
 

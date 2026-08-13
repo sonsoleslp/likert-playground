@@ -14,6 +14,7 @@ export default function App() {
     mode: 'bars',
     unit: 'items',
     showPercentLabels: true,
+    netType: 'partial',
     netCorr: 'pearson',
     netEstimator: 'glasso',
     netThreshold: 0,
@@ -86,10 +87,11 @@ export default function App() {
             ) : view.mode === 'network' ? (
               <>
                 <div className="plot-header">
-                  <h2>Partial correlation network</h2>
+                  <h2>{view.netType === 'correlation' ? 'Correlation network' : 'Partial correlation network'}</h2>
                   <p className="plot-sub muted small">
-                    Nodes are items; edges are partial correlations (each pair controlling for all
-                    other items).
+                    {view.netType === 'correlation'
+                      ? 'Nodes are items; edges are zero-order correlations between item pairs.'
+                      : 'Nodes are items; edges are partial correlations (each pair controlling for all other items).'}
                     {view.netSplitBy
                       ? ` One network per level of ${view.netSplitBy} (shared layout).`
                       : ' Computed over the whole sample.'}
@@ -100,6 +102,7 @@ export default function App() {
                   columns={config.likertColumns}
                   valueMap={config.valueMap}
                   subscales={config.subscales}
+                  type={view.netType}
                   corr={view.netCorr}
                   estimator={view.netEstimator}
                   alpha={view.netAlpha}

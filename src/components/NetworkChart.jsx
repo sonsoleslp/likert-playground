@@ -27,6 +27,7 @@ export default function NetworkChart({
   columns,
   valueMap,
   subscales,
+  type,
   corr,
   estimator,
   alpha,
@@ -84,12 +85,12 @@ export default function NetworkChart({
     splitBy ? Math.min(520, Math.max(300, panelW * 0.82)) : Math.min(680, Math.max(380, panelW * 0.66))
   );
 
-  const opts = { valueMap, corr, estimator, alpha, threshold, ebicGamma };
+  const opts = { valueMap, type, corr, estimator, alpha, threshold, ebicGamma };
 
   // Networks per panel.
   const nets = useMemo(
     () => groups.map((g) => ({ label: g.label, net: buildNetwork(g.rows, columns, opts) })),
-    [groups, columns, valueMap, corr, estimator, alpha, threshold, ebicGamma]
+    [groups, columns, valueMap, type, corr, estimator, alpha, threshold, ebicGamma]
   );
 
   // Reference network + layout (shared across panels for comparability).
@@ -182,7 +183,7 @@ export default function NetworkChart({
                   gi,
                   idx,
                   text: `${labelByName[net.nodes[e.i]]} — ${labelByName[net.nodes[e.j]]}`,
-                  sub: `partial r = ${e.weight.toFixed(3)}`,
+                  sub: `${type === 'correlation' ? 'r' : 'partial r'} = ${e.weight.toFixed(3)}`,
                   ...relPos(ev),
                 })
               }
@@ -218,9 +219,11 @@ export default function NetworkChart({
     );
   }
 
+  const corrLabel = corr === 'polychoric' ? 'Polychoric' : 'Pearson';
   const methodLabel =
-    `${corr === 'polychoric' ? 'Polychoric' : 'Pearson'} correlations · ` +
-    (estimator === 'glasso' ? 'EBICglasso' : 'shrinkage');
+    type === 'correlation'
+      ? `${corrLabel} correlations (zero-order)`
+      : `${corrLabel} partial correlations · ${estimator === 'glasso' ? 'EBICglasso' : 'shrinkage'}`;
 
   return (
     <div className="chart-wrap" ref={wrapRef}>
@@ -264,7 +267,7 @@ export default function NetworkChart({
           <span className="net-legend-item">
             <span className="edge-swatch" style={{ background: NEG }} /> negative
           </span>
-          <span className="muted small">width ∝ |partial r|</span>
+          <span className="muted small">width ∝ |{type === 'correlation' ? 'r' : 'partial r'}|</span>
         </div>
 
         {subNames.length > 0 && (
@@ -296,8 +299,8 @@ export default function NetworkChart({
           {splitBy
             ? `${nets.length} groups by ${splitBy}`
             : `${nets[0]?.net.edges.length ?? 0} edges · n=${nets[0]?.net.completeN ?? 0}`}
-          {!splitBy && estimator === 'glasso' && nets[0]?.net.lambda != null && ` · λ=${nets[0].net.lambda.toFixed(3)}`}
-          {!splitBy && nets[0]?.net.estimator === 'shrinkage' && estimator === 'glasso' && ' · glasso failed, used shrinkage'}
+          {!splitBy && type === 'partial' && nets[0]?.net.lambda != null && ` · λ=${nets[0].net.lambda.toFixed(3)}`}
+          {!splitBy && type === 'partial' && estimator === 'glasso' && nets[0]?.net.estimator === 'shrinkage' && ' · glasso failed, used shrinkage'}
           {refNodes.length > 0 && layoutRefNet?.dropped?.length > 0 && ` · dropped ${layoutRefNet.dropped.length} constant item(s)`}
           {!splitBy && nets[0]?.net.completeN < refNodes.length && (
             <span className="net-warn"> · few cases relative to items — interpret with caution</span>
