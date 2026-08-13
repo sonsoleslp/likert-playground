@@ -686,6 +686,108 @@
   color: #9ec5ec;
 }
 
+/* ---------- Network chart ---------- */
+.network-svg {
+  background: #fcfcfd;
+  border-radius: 8px;
+}
+.node-label {
+  font-size: 10px;
+  font-weight: 600;
+  fill: #26292f;
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.plot-sub {
+  margin: 4px 0 0;
+  max-width: 560px;
+  line-height: 1.4;
+}
+.net-footer {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.net-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  font-size: 12px;
+}
+.net-legend-title {
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+}
+.net-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.edge-swatch {
+  width: 20px;
+  height: 4px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.node-swatch {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.net-nodemap summary {
+  font-size: 12px;
+  color: var(--accent);
+  cursor: pointer;
+}
+.net-nodemap-grid {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 18px;
+  font-size: 12px;
+  color: var(--text);
+}
+.net-nodemap-grid code {
+  background: #eef1f5;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-right: 4px;
+  font-size: 11px;
+}
+.net-diag {
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.net-warn {
+  color: #b7791f;
+  font-weight: 500;
+}
+
+/* Slider fields */
+.field.slider {
+  gap: 8px;
+}
+.field.slider input[type='range'] {
+  flex: 1;
+  max-width: none;
+  padding: 0;
+}
+.slider-val {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  min-width: 30px;
+  text-align: right;
+}
+
 @media (max-width: 820px) {
   .workspace {
     grid-template-columns: 1fr;

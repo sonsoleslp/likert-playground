@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import DataLoader from './components/DataLoader';
 import ConfigPanel from './components/ConfigPanel';
 import LikertChart from './components/LikertChart';
+import NetworkChart from './components/NetworkChart';
 import Legend from './components/Legend';
 import QualityWarning from './components/QualityWarning';
 import { buildPlotData, analyzeQuality } from './lib/likert';
@@ -9,7 +10,13 @@ import './App.css';
 
 export default function App() {
   const [config, setConfig] = useState(null);
-  const [view, setView] = useState({ unit: 'items', showPercentLabels: true });
+  const [view, setView] = useState({
+    mode: 'bars',
+    unit: 'items',
+    showPercentLabels: true,
+    netThreshold: 0.05,
+    netAlpha: 0.15,
+  });
 
   const plotData = useMemo(() => {
     if (!config) return null;
@@ -72,6 +79,27 @@ export default function App() {
               <div className="placeholder">
                 Select at least one Likert column in the sidebar to begin.
               </div>
+            ) : view.mode === 'network' ? (
+              <>
+                <div className="plot-header">
+                  <h2>Partial correlation network</h2>
+                  <p className="plot-sub muted small">
+                    Nodes are items; edges are partial correlations (each pair controlling for all
+                    other items). Computed over the whole sample.
+                  </p>
+                </div>
+                <NetworkChart
+                  rows={config.rows}
+                  columns={config.likertColumns}
+                  valueMap={config.valueMap}
+                  subscales={config.subscales}
+                  alpha={view.netAlpha}
+                  threshold={view.netThreshold}
+                  filename={`${config.name} - network`
+                    .replace(/[^a-z0-9]+/gi, '_')
+                    .toLowerCase()}
+                />
+              </>
             ) : view.unit === 'subscales' &&
               config.subscales.every((s) => s.columns.length === 0) ? (
               <div className="placeholder">

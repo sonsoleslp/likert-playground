@@ -13,6 +13,7 @@ const INLINE_STYLE = `
   .seg-label { font-size: 10px; font-weight: 500; }
   .n-label { font-size: 10px; fill: #6b7280; }
   .empty-label { font-size: 11px; fill: #bbb; font-style: italic; }
+  .node-label { font-size: 10px; font-weight: 600; fill: #26292f; paint-order: stroke; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round; }
 `;
 
 // Return a serialized, self-contained SVG string with a white background.

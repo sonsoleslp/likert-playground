@@ -97,36 +97,79 @@ export default function ConfigPanel({ config, setConfig, view, setView }) {
       <section className="cfg-section">
         <h3>Grouping & view</h3>
         <label className="field">
-          <span>Group by</span>
-          <select
-            value={config.groupBy || ''}
-            onChange={(e) => patch({ groupBy: e.target.value || null })}
-          >
-            <option value="">— none —</option>
-            {config.columns
-              .filter((c) => !config.likertColumns.includes(c))
-              .map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
+          <span>Chart type</span>
+          <select value={view.mode} onChange={(e) => setView({ ...view, mode: e.target.value })}>
+            <option value="bars">Diverging bars</option>
+            <option value="network">Partial correlation network</option>
           </select>
         </label>
-        <label className="field">
-          <span>Plot unit</span>
-          <select value={view.unit} onChange={(e) => setView({ ...view, unit: e.target.value })}>
-            <option value="items">Individual items</option>
-            <option value="subscales">Subscales (pooled)</option>
-          </select>
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={view.showPercentLabels}
-            onChange={(e) => setView({ ...view, showPercentLabels: e.target.checked })}
-          />
-          <span>Show % labels on bars</span>
-        </label>
+
+        {view.mode === 'bars' ? (
+          <>
+            <label className="field">
+              <span>Group by</span>
+              <select
+                value={config.groupBy || ''}
+                onChange={(e) => patch({ groupBy: e.target.value || null })}
+              >
+                <option value="">— none —</option>
+                {config.columns
+                  .filter((c) => !config.likertColumns.includes(c))
+                  .map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Plot unit</span>
+              <select value={view.unit} onChange={(e) => setView({ ...view, unit: e.target.value })}>
+                <option value="items">Individual items</option>
+                <option value="subscales">Subscales (pooled)</option>
+              </select>
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={view.showPercentLabels}
+                onChange={(e) => setView({ ...view, showPercentLabels: e.target.checked })}
+              />
+              <span>Show % labels on bars</span>
+            </label>
+          </>
+        ) : (
+          <>
+            <label className="field slider">
+              <span>Edge threshold</span>
+              <input
+                type="range"
+                min={0}
+                max={0.5}
+                step={0.01}
+                value={view.netThreshold}
+                onChange={(e) => setView({ ...view, netThreshold: Number(e.target.value) })}
+              />
+              <span className="slider-val">{view.netThreshold.toFixed(2)}</span>
+            </label>
+            <label className="field slider">
+              <span>Regularization</span>
+              <input
+                type="range"
+                min={0}
+                max={0.6}
+                step={0.01}
+                value={view.netAlpha}
+                onChange={(e) => setView({ ...view, netAlpha: Number(e.target.value) })}
+              />
+              <span className="slider-val">{view.netAlpha.toFixed(2)}</span>
+            </label>
+            <div className="muted small">
+              Hide edges below the threshold; regularization shrinks the correlation matrix toward
+              the identity (higher = sparser, more stable for small samples).
+            </div>
+          </>
+        )}
       </section>
 
       {/* Subscales */}

@@ -16,7 +16,14 @@ and subscales, pick a grouping variable, and plot — nothing leaves the browser
   column (e.g. condition, gender), rendered as labeled sub-bars.
 - **Diverging stacked bars** centered on the neutral category, with a shared
   symmetric axis, per-bar `n`, `%` labels, a color legend, and a cursor-tracking
-  tooltip.
+  tooltip. Long labels wrap; the chart is width-responsive.
+- **Partial correlation network**: nodes are items, edges are partial
+  correlations (each pair controlling for all other items). Uses pairwise
+  Pearson correlations with linear shrinkage toward the identity for a stable,
+  positive-definite estimate (a pragmatic stand-in for EBICglasso), a
+  force-directed layout, edges colored by sign and weighted by |partial r|,
+  nodes colored by subscale, and adjustable edge-threshold and regularization
+  sliders.
 - **Data-quality warnings**: on upload, missing (blank) cells, invalid /
   out-of-range values, and malformed CSV rows are detected and summarized. These
   cells are excluded from the charts (each bar's `n` counts only valid
@@ -76,6 +83,7 @@ Steps:
 src/
   lib/
     likert.js        aggregation, diverging-bar geometry, quality analysis
+    network.js       correlation -> shrinkage -> precision -> partial correlations, force layout
     colors.js        diverging color palette
     exportImage.js   SVG / PNG export
   data/
@@ -87,6 +95,7 @@ src/
     DataLoader.jsx   upload + example picker + dataset-info modal
     ConfigPanel.jsx  scale / columns / subscales / grouping config
     LikertChart.jsx  the SVG diverging stacked bar chart + export + tooltip
+    NetworkChart.jsx partial correlation network (force layout, export, tooltip)
     Legend.jsx       color legend
     QualityWarning.jsx  data-quality banner
   App.jsx            top-level state & layout
