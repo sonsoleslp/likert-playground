@@ -100,7 +100,7 @@ export default function ConfigPanel({ config, setConfig, view, setView }) {
           <span>Chart type</span>
           <select value={view.mode} onChange={(e) => setView({ ...view, mode: e.target.value })}>
             <option value="bars">Diverging bars</option>
-            <option value="network">Partial correlation network</option>
+            <option value="network">Correlation network</option>
           </select>
         </label>
 

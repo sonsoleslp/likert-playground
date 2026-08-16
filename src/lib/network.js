@@ -11,18 +11,32 @@ import { toCode } from './likert.js';
 
 /* ----------------------------- normal helpers ---------------------------- */
 
-function erf(x) {
-  const t = 1 / (1 + 0.3275911 * Math.abs(x));
-  const y =
-    1 -
-    ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t +
-      0.254829592) *
-      t *
-      Math.exp(-x * x);
-  return x >= 0 ? y : -y;
+// High-accuracy complementary error function (Numerical Recipes erfccheb,
+// ~1e-15). Used so polychoric cell probabilities match R to machine tolerance.
+const ERFC_COF = [
+  -1.3026537197817094, 6.4196979235649026e-1, 1.9476473204185836e-2, -9.561514786808631e-3,
+  -9.46595344482036e-4, 3.66839497852761e-4, 4.2523324806907e-5, -2.0278578112534e-5,
+  -1.624290004647e-6, 1.30365583558e-6, 1.5626441722e-8, -8.5238095915e-8, 6.529054439e-9,
+  5.059343495e-9, -9.91364156e-10, -2.27365122e-10, 9.6467911e-11, 2.394038e-12, -6.886027e-12,
+  8.94487e-13, 3.13092e-13, -1.12708e-13, 3.81e-16, 7.106e-15,
+];
+function erfccheb(z) {
+  let d = 0;
+  let dd = 0;
+  const t = 2 / (2 + z);
+  const ty = 4 * t - 2;
+  for (let j = ERFC_COF.length - 1; j > 0; j--) {
+    const tmp = d;
+    d = ty * d - dd + ERFC_COF[j];
+    dd = tmp;
+  }
+  return t * Math.exp(-z * z + 0.5 * (ERFC_COF[0] + ty * d) - dd);
+}
+function erfc(x) {
+  return x >= 0 ? erfccheb(x) : 2 - erfccheb(-x);
 }
 function normCdf(x) {
-  return 0.5 * (1 + erf(x / Math.SQRT2));
+  return 0.5 * erfc(-x / Math.SQRT2);
 }
 function normInv(p) {
   if (p <= 0) return -Infinity;
@@ -48,39 +62,48 @@ function normInv(p) {
   return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
 }
 
-// Gauss-Legendre nodes/weights (half sets, symmetric) from Genz's tvpack.
-const GL = {
-  3: {
-    w: [0.1713244923791705, 0.3607615730481384, 0.4679139345726904],
-    x: [0.9324695142031522, 0.6612093864662647, 0.238619186083197],
-  },
-  6: {
-    w: [0.04717533638651177, 0.1069393259953183, 0.1600783285433464, 0.2031674267230659, 0.2334925365383547, 0.2491470458134029],
-    x: [0.9815606342467191, 0.904117256370475, 0.769902674194305, 0.5873179542866171, 0.3678314989981802, 0.1252334085114689],
-  },
-  10: {
-    w: [0.01761400713915212, 0.04060142980038694, 0.06267204833410906, 0.08327674157670475, 0.1019301198172404, 0.1181945319615184, 0.1316886384491766, 0.1420961093183821, 0.1491729864726037, 0.1527533871307259],
-    x: [0.9931285991850949, 0.9639719272779138, 0.9122344282513259, 0.8391169718222188, 0.7463319064601508, 0.636053680726515, 0.5108670019508271, 0.3737060887154196, 0.2277858511416451, 0.07652652113349734],
-  },
-};
+// Gauss-Legendre nodes/weights on [-1,1], generated once via Newton iteration
+// on the Legendre polynomial (deterministic; no hard-coded tables).
+function gaussLegendre(m) {
+  const x = new Array(m);
+  const w = new Array(m);
+  for (let i = 0; i < m; i++) {
+    let xi = Math.cos((Math.PI * (i + 0.75)) / (m + 0.5));
+    let dp = 0;
+    for (let it = 0; it < 100; it++) {
+      let p0 = 1;
+      let p1 = xi;
+      for (let k = 2; k <= m; k++) {
+        const p2 = ((2 * k - 1) * xi * p1 - (k - 1) * p0) / k;
+        p0 = p1;
+        p1 = p2;
+      }
+      dp = (m * (xi * p1 - p0)) / (xi * xi - 1);
+      const dx = -p1 / dp;
+      xi += dx;
+      if (Math.abs(dx) < 1e-15) break;
+    }
+    x[i] = xi;
+    w[i] = 2 / ((1 - xi * xi) * dp * dp);
+  }
+  return { x, w };
+}
+const GLR = gaussLegendre(32);
 
 // P(X >= h, Y >= k) for standard bivariate normal with correlation r
-// (Genz asin-integral form; accurate for |r| well away from 1).
+// (Genz asin-integral form; 32-point Gauss-Legendre over [0, asin r]).
 function bvnUpper(h, k, r) {
   r = Math.max(-0.9999, Math.min(0.9999, r));
-  const ar = Math.abs(r);
-  const g = ar < 0.3 ? GL[3] : ar < 0.75 ? GL[6] : GL[10];
   const hk = h * k;
   const hs = (h * h + k * k) / 2;
   const asr = Math.asin(r);
-  let bvn = 0;
-  for (let i = 0; i < g.w.length; i++) {
-    for (const s of [-1, 1]) {
-      const sn = Math.sin((asr * (s * g.x[i] + 1)) / 2);
-      bvn += g.w[i] * Math.exp((sn * hk - hs) / (1 - sn * sn));
-    }
+  let sum = 0;
+  for (let i = 0; i < GLR.x.length; i++) {
+    const th = (asr * (GLR.x[i] + 1)) / 2;
+    const sn = Math.sin(th);
+    sum += GLR.w[i] * Math.exp((sn * hk - hs) / (1 - sn * sn));
   }
-  bvn = (bvn * asr) / (4 * Math.PI) + normCdf(-h) * normCdf(-k);
+  const bvn = (sum * asr) / (4 * Math.PI) + normCdf(-h) * normCdf(-k);
   return Math.max(0, Math.min(1, bvn));
 }
 // P(X <= h, Y <= k), handling infinite limits.
@@ -261,10 +284,12 @@ function logdetPD(M) {
 const soft = (x, t) => Math.sign(x) * Math.max(Math.abs(x) - t, 0);
 
 // Graphical lasso (Friedman, Hastie & Tibshirani 2008) on covariance S with
-// penalty rho. Returns { precision, W } or null if it fails to converge nicely.
-function glasso(S, rho, maxIter = 100, tol = 1e-4) {
+// penalty rho. penalize.diagonal=false matches qgraph::EBICglasso / glasso
+// defaults (the diagonal of the covariance estimate is not penalized).
+// Returns { precision, W }.
+function glasso(S, rho, { penalizeDiagonal = false, maxIter = 200, tol = 1e-5 } = {}) {
   const p = S.length;
-  const W = S.map((row, i) => row.map((v, j) => (i === j ? v + rho : v)));
+  const W = S.map((row, i) => row.map((v, j) => (i === j ? v + (penalizeDiagonal ? rho : 0) : v)));
   const B = Array.from({ length: p }, () => new Array(p - 1).fill(0));
 
   for (let iter = 0; iter < maxIter; iter++) {
@@ -323,7 +348,7 @@ function glasso(S, rho, maxIter = 100, tol = 1e-4) {
 }
 
 // EBICglasso: run glasso over a lambda path and pick the one minimizing EBIC.
-function ebicGlasso(S, n, { gamma = 0.5, nLambda = 60, ratio = 0.01 } = {}) {
+function ebicGlasso(S, n, { gamma = 0.5, nLambda = 100, ratio = 0.01 } = {}) {
   const p = S.length;
   let lamMax = 0;
   for (let i = 0; i < p; i++) for (let j = i + 1; j < p; j++) lamMax = Math.max(lamMax, Math.abs(S[i][j]));
@@ -476,6 +501,17 @@ export function buildNetwork(rows, columns, opts = {}) {
     singular,
   };
 }
+
+// Test hooks (used by the R cross-validation harness, not the app).
+export const _test = {
+  glassoPrecision: (S, lambda, opts) => glasso(S, lambda, opts).precision,
+  ebicGlasso,
+  invert,
+  biCdf,
+  polychoricPair,
+  normInv,
+  normCdf,
+};
 
 // Deterministic Fruchterman-Reingold layout. Seeds nodes on a circle (stable
 // across renders). Returns fitted {x,y} positions.

@@ -4,6 +4,9 @@ node_modules/
 # Vite default build output (we publish to /docs for GitHub Pages instead)
 dist/
 
+# Validation harness output
+scripts/validate/out/
+
 # Logs
 logs/
 *.log
