@@ -792,6 +792,51 @@
   font-weight: 500;
 }
 
+/* Network computing states */
+.net-canvas {
+  position: relative;
+}
+.network-svg.is-stale {
+  opacity: 0.45;
+  transition: opacity 0.15s;
+}
+.net-overlay {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #1f2430;
+  color: #fff;
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 13px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+.net-computing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--muted);
+}
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Slider fields */
 .field.slider {
   gap: 8px;

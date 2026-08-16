@@ -31,6 +31,10 @@ and subscales, pick a grouping variable, and plot — nothing leaves the browser
   - Deterministic force-directed layout, edges colored by sign and weighted by
     |partial r|, nodes colored by subscale, hover tooltips, PNG/SVG export, and
     sliders for the edge threshold and EBIC γ / shrinkage.
+  - **Non-blocking**: the heavy computation (polychoric + EBICglasso, per
+    group) runs in a **Web Worker**, so the UI never freezes; a spinner shows
+    while it recomputes, and the edge-threshold slider filters instantly on the
+    main thread with no recompute.
   - **Validated against R** (`qgraph`, `lavaan`, `glasso`): on the same data the
     outputs match to Pearson 5e-9, polychoric (`cor_auto`) 5e-8, and EBICglasso
     ~2e-5 with the *identical* selected λ and edge set. See

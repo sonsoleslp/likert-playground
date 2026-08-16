@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { buildNetwork, forceLayout } from '../lib/network';
+import { forceLayout } from '../lib/network';
 import { downloadPNG, downloadSVG } from '../lib/exportImage';
 
 const CAT = [
@@ -15,11 +15,6 @@ const TITLE_H = 22;
 function shortLabel(name, idx) {
   const s = String(name);
   return s.length <= 10 ? s : `V${idx + 1}`;
-}
-
-// Group value key (matches buildPlotData's handling).
-function groupKey(v) {
-  return v === null || v === undefined || v === '' ? '(missing)' : String(v);
 }
 
 export default function NetworkChart({
@@ -60,50 +55,64 @@ export default function NetworkChart({
 
   const width = Math.max(320, availW);
 
-  // Panel groups.
-  const groups = useMemo(() => {
-    if (!splitBy) return [{ label: null, rows }];
-    const order = [];
-    const seen = new Set();
-    for (const row of rows) {
-      const key = groupKey(row[splitBy]);
-      if (!seen.has(key)) {
-        seen.add(key);
-        order.push(key);
-      }
-    }
-    order.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-    return order.map((key) => ({
-      label: key,
-      rows: rows.filter((r) => groupKey(r[splitBy]) === key),
-    }));
-  }, [rows, splitBy]);
+  // --- Heavy computation runs in a Web Worker so the UI never freezes. ---
+  const workerRef = useRef(null);
+  const jobRef = useRef(0);
+  const [result, setResult] = useState(null); // { groups:[{label,net}], refNet }
+  const [computing, setComputing] = useState(true);
 
-  const cols = splitBy && groups.length > 1 && width >= 680 ? 2 : 1;
+  useEffect(() => {
+    const worker = new Worker(new URL('../lib/networkWorker.js', import.meta.url), {
+      type: 'module',
+    });
+    worker.onmessage = (e) => {
+      if (e.data.id !== jobRef.current) return; // ignore stale jobs
+      if (!e.data.error) setResult(e.data);
+      setComputing(false);
+    };
+    workerRef.current = worker;
+    return () => worker.terminate();
+  }, []);
+
+  // Recompute when the data or method changes (NOT the threshold — that is
+  // applied on the main thread below). Debounced so slider drags don't spam.
+  useEffect(() => {
+    if (!workerRef.current) return;
+    setComputing(true);
+    const id = ++jobRef.current;
+    const t = setTimeout(() => {
+      workerRef.current.postMessage({
+        id,
+        rows,
+        columns,
+        valueMap,
+        type,
+        corr,
+        estimator,
+        alpha,
+        ebicGamma,
+        splitBy,
+      });
+    }, 180);
+    return () => clearTimeout(t);
+  }, [rows, columns, valueMap, type, corr, estimator, alpha, ebicGamma, splitBy]);
+
+  // Apply the display threshold to the worker result instantly (no recompute).
+  const nets = useMemo(() => {
+    if (!result) return [];
+    return result.groups.map((g) => ({
+      label: g.label,
+      net: { ...g.net, edges: g.net.edges.filter((e) => Math.abs(e.weight) >= threshold) },
+    }));
+  }, [result, threshold]);
+  const layoutRefNet = result?.refNet;
+
+  const nPanels = nets.length || 1;
+  const cols = splitBy && nPanels > 1 && width >= 680 ? 2 : 1;
   const panelW = Math.floor((width - PANEL_GAP * (cols - 1)) / cols);
   const panelH = Math.round(
     splitBy ? Math.min(520, Math.max(300, panelW * 0.82)) : Math.min(680, Math.max(380, panelW * 0.66))
   );
-
-  const opts = { valueMap, type, corr, estimator, alpha, threshold, ebicGamma };
-
-  // Networks per panel.
-  const nets = useMemo(
-    () => groups.map((g) => ({ label: g.label, net: buildNetwork(g.rows, columns, opts) })),
-    [groups, columns, valueMap, type, corr, estimator, alpha, threshold, ebicGamma]
-  );
-
-  // Reference network + layout (shared across panels for comparability).
-  const layoutRefNet = useMemo(() => {
-    if (!splitBy) return nets[0]?.net;
-    return buildNetwork(rows, columns, {
-      valueMap,
-      corr: 'pearson',
-      estimator: 'shrinkage',
-      alpha: 0.15,
-      threshold: 0,
-    });
-  }, [splitBy, nets, rows, columns, valueMap]);
 
   const refNodes = layoutRefNet ? layoutRefNet.nodes : [];
   const positionsByName = useMemo(() => {
@@ -131,10 +140,15 @@ export default function NetworkChart({
     return i >= 0 ? CAT[i % CAT.length] : '#9aa3ad';
   };
 
-  // Global max |weight| across panels so edge widths are comparable.
+  // Global max |weight| across panels (from the full, pre-threshold edges) so
+  // edge widths stay comparable and don't rescale as the threshold changes.
   const maxAbs = useMemo(
-    () => Math.max(1e-6, ...nets.flatMap((p) => p.net.edges.map((e) => Math.abs(e.weight)))) || 1,
-    [nets]
+    () =>
+      Math.max(
+        1e-6,
+        ...(result?.groups || []).flatMap((p) => p.net.edges.map((e) => Math.abs(e.weight)))
+      ) || 1,
+    [result]
   );
   const edgeWidth = (w) => 1 + (Math.abs(w) / maxAbs) * 8;
 
@@ -237,15 +251,31 @@ export default function NetworkChart({
         </button>
       </div>
 
-      {refNodes.length < 2 ? (
+      {!result && computing ? (
+        <div className="placeholder net-computing">
+          <span className="spinner" /> Computing network…
+        </div>
+      ) : refNodes.length < 2 ? (
         <div className="placeholder">Select at least two Likert items to build a network.</div>
       ) : (
-        <>
-          <svg ref={svgRef} width={svgW} height={svgH} className="likert-svg network-svg" role="img">
+        <div className="net-canvas">
+          <svg
+            ref={svgRef}
+            width={svgW}
+            height={svgH}
+            className={`likert-svg network-svg${computing ? ' is-stale' : ''}`}
+            role="img"
+          >
             {nets.map(renderPanel)}
           </svg>
 
-          {hover && (
+          {computing && (
+            <div className="net-overlay">
+              <span className="spinner" /> Updating…
+            </div>
+          )}
+
+          {hover && !computing && (
             <div
               className="tooltip-floating"
               style={{ left: Math.min(hover.x + 14, width - 190), top: Math.max(hover.y - 6, 4) }}
@@ -255,7 +285,7 @@ export default function NetworkChart({
               <span className="tt-cat">{hover.sub}</span>
             </div>
           )}
-        </>
+        </div>
       )}
 
       <div className="net-footer">
